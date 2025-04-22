@@ -1,0 +1,26 @@
+name:                mypandoc
+version:             0.1.0.0
+
+dependencies:
+- base >= 4.7 && < 5
+- containers
+- optparse-applicative
+
+library:
+  source-dirs: src
+
+executables:
+  mypandoc:
+    main: Main.hs
+    source-dirs: app
+    ghc-options: -Wall
+    dependencies:
+    - mypandoc
+
+tests:
+  mypandoc-test:
+    main: Spec.hs
+    source-dirs: test
+    dependencies:
+    - mypandoc
+    - base
