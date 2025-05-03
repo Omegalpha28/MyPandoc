@@ -9,24 +9,25 @@ module Main where
 
 import System.Environment (getArgs)
 import System.Exit (exitWith, ExitCode(..))
-import Data.Maybe (isNothing)
-import Text.Read (readMaybe)
+import System.IO (hPutStr, hPutStrLn, stdout, stderr)
+import Data.Maybe (isNothing, fromJust)
+import Control.Exception (catch, IOException)
+import Library
+import EncoderFile
 
 data Options = Options
-    {
-        inputFile   :: Maybe FilePath,
-        outputFormat :: Maybe String,
-        outputFile  :: Maybe FilePath,
-        inputFormat :: Maybe String
+    { inputFile   :: Maybe FilePath
+    , outputFormat :: Maybe String
+    , outputFile  :: Maybe FilePath
+    , inputFormat :: Maybe String
     } deriving Show
 
 defaultOptions :: Options
 defaultOptions = Options
-    {
-        inputFile = Nothing,
-        outputFormat = Nothing,
-        outputFile = Nothing,
-        inputFormat = Nothing
+    { inputFile = Nothing
+    , outputFormat = Nothing
+    , outputFile = Nothing
+    , inputFormat = Nothing
     }
 
 parseArgs :: [String] -> Options -> Either String Options
@@ -59,24 +60,70 @@ parseArgs _ _ = Left "Error: Invalid arguments."
 
 usage :: String
 usage = unlines
-    [
-        "USAGE: ./mypandoc -i ifile -f oformat [-o ofile] [-e iformat]",
-        "",
-        "   ifile     path to the file to convert",
-        "   oformat   output format (xml, json, markdown)",
-        "   ofile     path to the output file",
-        "   iformat   input format (xml, json, markdown)"
+    [ "USAGE: ./mypandoc -i ifile -f oformat [-o ofile] [-e iformat]"
+    , ""
+    , "   ifile     path to the file to convert"
+    , "   oformat   output format (xml, json, markdown)"
+    , "   ofile     path to the output file"
+    , "   iformat   input format (xml, json, markdown)"
     ]
 
 exitWithError :: String -> IO a
-exitWithError msg = putStrLn msg >> exitWith (ExitFailure 84)
+exitWithError msg = hPutStrLn stderr msg >> exitWith (ExitFailure 84)
 
 exitUsage :: IO a
-exitUsage = putStr usage >> exitWith (ExitSuccess)
+exitUsage = hPutStr stderr usage >> exitWith (ExitFailure 84)
+
+decodeDocument :: Maybe String -> String -> Either String Documents
+decodeDocument _ _ = Right createTestDocument
+
+createTestDocument :: Documents
+createTestDocument = Documents
+    (HeaderFile "Test Document" (Just "Author") Nothing)
+    (BodyFile
+        [ Paragraph [TextElement (Text "Hello, world!" False False False)]
+        , Section (Just "Section 1")
+            [TextElement (Text "This is a test." False False False)]
+        , CodeBlock "print('Hello')"
+        , LinkElement (Link "https://example.com" "Example")
+        , ImageElement (Image "image.jpg" "An image")
+        , ListElement [Item [TextElement (Text "Item 1" False False False)]]])
+
+readInput :: FilePath -> IO String
+readInput inputPath =
+    readFile inputPath `catch` \e ->
+        exitWithError $ "Error: Failed to read input file '" ++
+            inputPath ++ "': " ++ show (e :: IOException)
+
+decodeInput :: Maybe String -> String -> IO Documents
+decodeInput inputFormat input =
+    case decodeDocument inputFormat input of
+        Left err -> exitWithError err
+        Right doc -> return doc
+
+encodeOutput :: String -> Documents -> IO String
+encodeOutput outputFormat doc =
+    case encodeDocument outputFormat doc of
+        Left err -> exitWithError err
+        Right output -> return output
+
+writeOutput :: Maybe FilePath -> String -> IO ()
+writeOutput (Just path) output =
+    writeFile path output `catch` \e ->
+        exitWithError $ "Error: Failed to write output file '" ++ path ++
+            "': " ++ show (e :: IOException)
+writeOutput Nothing output =
+    hPutStr stdout output `catch` \e ->
+        exitWithError $ "Error: Failed to write to stdout: " ++
+            show (e :: IOException)
 
 processOptions :: Options -> IO ()
 processOptions opts = do
-    print opts
+    let inputPath = fromJust (inputFile opts)
+    input <- readInput inputPath
+    doc <- decodeInput (inputFormat opts) input
+    output <- encodeOutput (fromJust $ outputFormat opts) doc
+    writeOutput (outputFile opts) output
 
 main :: IO ()
 main = do
@@ -86,4 +133,3 @@ main = do
         else case parseArgs args defaultOptions of
             Left err   -> exitWithError err
             Right opts -> processOptions opts
-
