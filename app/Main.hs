@@ -13,6 +13,7 @@ import System.IO (hPutStr, hPutStrLn, stdout, stderr)
 import Data.Maybe (isNothing, fromJust)
 import Control.Exception (catch, IOException)
 import Library
+import DecoderFile
 import EncoderFile
 
 data Options = Options
@@ -73,21 +74,6 @@ exitWithError msg = hPutStrLn stderr msg >> exitWith (ExitFailure 84)
 
 exitUsage :: IO a
 exitUsage = hPutStr stderr usage >> exitWith (ExitFailure 84)
-
-decodeDocument :: Maybe String -> String -> Either String Documents
-decodeDocument _ _ = Right createTestDocument
-
-createTestDocument :: Documents
-createTestDocument = Documents
-    (HeaderFile "Test Document" (Just "Author") Nothing)
-    (BodyFile
-        [ Paragraph [TextElement (Text "Hello, world!" False False False)]
-        , Section (Just "Section 1")
-            [TextElement (Text "This is a test." False False False)]
-        , CodeBlock "print('Hello')"
-        , LinkElement (Link "https://example.com" "Example")
-        , ImageElement (Image "image.jpg" "An image")
-        , ListElement [Item [TextElement (Text "Item 1" False False False)]]])
 
 readInput :: FilePath -> IO String
 readInput inputPath =
