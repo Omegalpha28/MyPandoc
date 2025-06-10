@@ -63,30 +63,47 @@ parseBodyXML input = do
     Right (BodyFile contents, rest3)
 
 parseContentsXML :: Parser [ContentElement]
-parseContentsXML input
-    | "</" `isPrefixOf` input = Right ([], input)
-    | otherwise = do
-        (content, rest1) <- parseContentXML input
-        (restContents, rest2) <- parseContentsXML rest1
-        Right (content : restContents, rest2)
+parseContentsXML input = do
+    ((), rest0) <- skipSpaces input
+    if "</" `isPrefixOf` rest0
+        then Right ([], rest0)
+        else case parseTextXML rest0 of
+            Right (text, rest1) -> do
+                let textElement = TextElement (Text text False False False)
+                (restContents, rest2) <- parseContentsXML rest1
+                Right (textElement : restContents, rest2)
+            Left _ -> case parseTextElementXML rest0 of
+                Right (elem, rest1) -> do
+                    (restContents, rest2) <- parseContentsXML rest1
+                    Right (elem : restContents, rest2)
+                Left _ -> do
+                    (content, rest1) <- parseContentXML rest0
+                    (restContents, rest2) <- parseContentsXML rest1
+                    Right (content : restContents, rest2)
+
+parseTextXML :: Parser String
+parseTextXML input = do
+    let (text, rest) = span (/= '<') input
+    if null text
+        then Left "Error: Expected text content"
+        else Right (text, rest)
 
 parseContentXML :: Parser ContentElement
-parseContentXML input =
+parseContentXML input = do
+    let preview = take 20 input
     case parseParagraphXML input of
         Right r -> Right r
         Left _ -> case parseSectionXML input of
             Right r -> Right r
             Left _ -> case parseCodeBlockXML input of
                 Right r -> Right r
-                Left _ -> case parseTextElementXML input of
+                Left _ -> case parseLinkElementXML input of
                     Right r -> Right r
-                    Left _ -> case parseLinkElementXML input of
+                    Left _ -> case parseImageElementXML input of
                         Right r -> Right r
-                        Left _ -> case parseImageElementXML input of
+                        Left _ -> case parseListElementXML input of
                             Right r -> Right r
-                            Left _ -> case parseListElementXML input of
-                                Right r -> Right r
-                                Left _ -> Left "Error: Invalid content element"
+                            Left _ -> Left $ "Error: Invalid content element at \"" ++ preview ++ "\""
 
 parseParagraphXML :: Parser ContentElement
 parseParagraphXML input = do
@@ -121,7 +138,9 @@ parseTextElementXML input = do
     let italic = tag == "italic"
         bold = tag == "bold"
         code = tag == "code"
-    Right (TextElement (Text text italic bold code), rest4)
+    if italic || bold || code
+        then Right (TextElement (Text text italic bold code), rest4)
+        else Left $ "Error: Invalid text element tag: " ++ tag
 
 parseLinkElementXML :: Parser ContentElement
 parseLinkElementXML input = do
